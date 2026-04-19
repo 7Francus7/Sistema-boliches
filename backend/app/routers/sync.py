@@ -92,10 +92,18 @@ def _apply_access(db: Session, op: AccessOp) -> OpResult:
             return OpResult(client_uuid=op.client_uuid, status="conflict", reason="ticket_void")
         if ticket.status == "used":
             # First-write-wins por scanned_at: el segundo escaneo es conflicto.
-            if ticket.used_at and ticket.used_at <= op.scanned_at:
-                return OpResult(
-                    client_uuid=op.client_uuid, status="conflict", reason="already_used"
-                )
+            used_at = ticket.used_at
+            scanned_at = op.scanned_at
+            # Normalizamos tz: SQLite devuelve naive, Postgres aware.
+            if used_at is not None:
+                if used_at.tzinfo is None and scanned_at.tzinfo is not None:
+                    used_at = used_at.replace(tzinfo=scanned_at.tzinfo)
+                elif used_at.tzinfo is not None and scanned_at.tzinfo is None:
+                    scanned_at = scanned_at.replace(tzinfo=used_at.tzinfo)
+                if used_at <= scanned_at:
+                    return OpResult(
+                        client_uuid=op.client_uuid, status="conflict", reason="already_used"
+                    )
         ticket.status = "used"
         ticket.used_at = op.scanned_at
         ticket.used_by_device_id = op.device_id

@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { api } from '../api.js'
 import { db, getKV, setKV } from '../db.js'
-import { uuidv4 } from '../sync/engine.js'
 
 export const useSession = defineStore('session', {
   state: () => ({
@@ -32,10 +31,21 @@ export const useSession = defineStore('session', {
       await setKV('role', r.role)
       await setKV('user_id', r.user_id)
       await setKV('venue_id', r.venue_id)
+
+      // Registro de device server-side la primera vez en este navegador.
       if (!(await getKV('device_id'))) {
-        // Generamos device_id local la primera vez. En prod se registra en backend.
-        await setKV('device_id', uuidv4())
+        const label =
+          r.role === 'door'
+            ? `Puerta · ${navigator.platform || 'device'}`
+            : r.role === 'admin'
+            ? `Admin · ${navigator.platform || 'device'}`
+            : `POS · ${navigator.platform || 'device'}`
+        const deviceType = r.role === 'door' ? 'door' : r.role === 'admin' ? 'admin' : 'pos'
+        const dev = await api.registerDevice(label, deviceType)
+        await setKV('device_id', dev.id)
+        await setKV('device_label', dev.label)
       }
+
       await this.restore()
     },
 

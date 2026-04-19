@@ -39,15 +39,26 @@ def dashboard(
     ).all()
 
     since = datetime.now(timezone.utc) - timedelta(hours=12)
+
+    dialect = db.bind.dialect.name if db.bind else "postgresql"
+    if dialect == "sqlite":
+        hour_expr = func.strftime("%Y-%m-%d %H:00:00", AccessLog.scanned_at).label("h")
+    else:
+        hour_expr = func.date_trunc("hour", AccessLog.scanned_at).label("h")
+
     access_by_hour = db.execute(
-        select(
-            func.date_trunc("hour", AccessLog.scanned_at).label("h"),
-            func.count(AccessLog.id),
-        )
+        select(hour_expr, func.count(AccessLog.id))
         .where(AccessLog.scanned_at >= since, AccessLog.direction == "in")
-        .group_by("h")
-        .order_by("h")
+        .group_by(hour_expr)
+        .order_by(hour_expr)
     ).all()
+
+    def _fmt_hour(h):
+        if h is None:
+            return None
+        if hasattr(h, "isoformat"):
+            return h.isoformat()
+        return str(h)
 
     return {
         "revenue_total": float(total or 0),
@@ -56,5 +67,5 @@ def dashboard(
         "top_products": [
             {"name": n, "units": int(u or 0), "revenue": float(r or 0)} for n, u, r in top_products
         ],
-        "access_by_hour": [{"hour": h.isoformat() if h else None, "count": c} for h, c in access_by_hour],
+        "access_by_hour": [{"hour": _fmt_hour(h), "count": c} for h, c in access_by_hour],
     }

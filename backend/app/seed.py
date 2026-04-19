@@ -9,7 +9,6 @@ from sqlalchemy import select
 
 from .db import SessionLocal
 from .models import (
-    Device,
     Event,
     Product,
     StockLevel,
@@ -59,13 +58,6 @@ def run_seed() -> None:
                     role="door",
                     pin_code="3333",
                 ),
-            ]
-        )
-
-        db.add_all(
-            [
-                Device(venue_id=venue.id, label="Barra Central", type="pos"),
-                Device(venue_id=venue.id, label="Puerta Principal", type="door"),
             ]
         )
 

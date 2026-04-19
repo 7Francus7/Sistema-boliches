@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -18,7 +20,12 @@ def get_current_user(
     except ValueError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token")
 
-    user = db.get(User, payload["sub"])
+    try:
+        user_id = uuid.UUID(payload["sub"])
+    except (KeyError, ValueError):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid subject")
+
+    user = db.get(User, user_id)
     if not user or not user.active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user not found")
     return user
