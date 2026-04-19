@@ -7,6 +7,7 @@ const routes = [
   { path: '/pos', component: () => import('./views/POS.vue') },
   { path: '/door', component: () => import('./views/Door.vue') },
   { path: '/admin', component: () => import('./views/Admin.vue') },
+  { path: '/admin/stock', component: () => import('./views/AdminStock.vue') },
 ]
 
 export const router = createRouter({

@@ -96,14 +96,34 @@ frontend/
       Admin.vue
 ```
 
+## Tests
+
+```bash
+cd backend
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest
+```
+
+14 tests cubren auth, bootstrap, idempotencia por `client_uuid`,
+first-write-wins en accesos, decremento de stock, CRUD de productos y
+el E2E completo de "noche offline → sync → dashboard".
+
+## Impresión y barcode en el POS
+
+- **ESC/POS**: la impresión del ticket busca Web Serial → Web Bluetooth →
+  fallback HTML (abre una ventana imprimible). El toggle "IMPRIMIR" en
+  la barra lateral desactiva la impresión si la ticketera está rota.
+- **Lector de código de barras**: cualquier scanner USB en modo HID-keyboard
+  se detecta automáticamente (latido rápido entre teclas + Enter final).
+  Busca por `sku` en el catálogo local y agrega al ticket.
+
 ## Próximos pasos sugeridos
 
-- [ ] Migraciones Alembic (reemplazar `create_all` en lifespan).
-- [ ] Registro de device server-side (hoy se genera el `device_id` en cliente).
 - [ ] Alertas UI para `conflict` de `/sync/batch`.
-- [ ] Impresión a ticketera térmica (ESC/POS) desde POS.
 - [ ] Módulo de ventas online (ticketing + pago) → fee transaccional.
 - [ ] Reportes de mermas (cuando stock proyectado diverge del real).
+- [ ] Roles más granulares + auditoría.
+- [ ] Playwright para E2E del PWA real con red simulada.
 
 ## Roadmap comercial
 

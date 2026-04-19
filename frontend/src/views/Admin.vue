@@ -16,7 +16,10 @@ onMounted(async () => {
 
 <template>
   <div class="p-6">
-    <h1 class="font-display text-3xl mb-6">DASHBOARD</h1>
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="font-display text-3xl">DASHBOARD</h1>
+      <router-link to="/admin/stock" class="btn btn-hot px-6 py-3">STOCK Y PRECIOS</router-link>
+    </div>
 
     <div v-if="error" class="bg-danger text-white p-3 font-mono text-sm">{{ error }}</div>
 
