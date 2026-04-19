@@ -184,3 +184,135 @@ class SaleItem(Base):
     discount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
 
     sale: Mapped[Sale] = relationship(back_populates="items")
+
+
+# ---------- v2: turnos, RRPP, cashless, proveedores ----------
+
+
+class Shift(Base):
+    """Turno de caja: apertura/cierre con arqueo de efectivo."""
+    __tablename__ = "shifts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    venue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id"))
+    event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("events.id"))
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    opening_cash: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    closing_cash: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    expected_cash: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    cash_variance: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class Promoter(Base):
+    """RRPP / Relaciones Públicas con comisión % por venta atribuida."""
+    __tablename__ = "promoters"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    venue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(60), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(40))
+    commission_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=10)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    __table_args__ = (UniqueConstraint("venue_id", "slug", name="uq_promoters_venue_slug"),)
+
+
+# Relación ticket → promoter (via columna directa en tickets con FK nullable)
+# Lo agregamos por Alembic, no rompe el ORM existente porque Ticket no declara el campo:
+#   (lo declaramos también acá como mapped_column adicional para usar en queries).
+
+
+# Para agregar `promoter_id` a Ticket sin redefinir la clase completa, inyectamos la columna:
+Ticket.promoter_id = mapped_column(
+    ForeignKey("promoters.id", ondelete="SET NULL"), nullable=True
+)
+
+
+class Tab(Base):
+    """Cuenta pre-pagada (cashless): pulsera QR/NFC con saldo recargable."""
+    __tablename__ = "tabs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    venue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"))
+    event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("events.id"))
+    code: Mapped[str] = mapped_column(String(60), nullable=False)
+    holder_name: Mapped[str | None] = mapped_column(String(120))
+    holder_doc: Mapped[str | None] = mapped_column(String(40))
+    balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active|closed|lost
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("venue_id", "code", name="uq_tabs_venue_code"),)
+
+
+class TabMovement(Base):
+    """Movimiento en una cuenta pre-pagada. Log inmutable, idempotente por client_uuid."""
+    __tablename__ = "tab_movements"
+    __table_args__ = (UniqueConstraint("client_uuid", name="uq_tab_movements_client_uuid"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    client_uuid: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    tab_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tabs.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # load|charge|refund
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)  # + entra / - sale
+    ref_sale_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales.id", ondelete="SET NULL"))
+    device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# Columna tab_id en sales para atribuir la venta a una pulsera (cashless).
+Sale.tab_id = mapped_column(ForeignKey("tabs.id", ondelete="SET NULL"), nullable=True)
+# Columna shift_id en sales para atribuir al turno.
+Sale.shift_id = mapped_column(ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True)
+
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    venue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    contact: Mapped[str | None] = mapped_column(String(120))
+    phone: Mapped[str | None] = mapped_column(String(40))
+    email: Mapped[str | None] = mapped_column(String(180))
+    tax_id: Mapped[str | None] = mapped_column(String(40))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Purchase(Base):
+    __tablename__ = "purchases"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    venue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"))
+    supplier_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("suppliers.id"))
+    reference: Mapped[str | None] = mapped_column(String(80))
+    total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+
+    items: Mapped[list["PurchaseItem"]] = relationship(
+        back_populates="purchase", cascade="all, delete-orphan"
+    )
+
+
+class PurchaseItem(Base):
+    __tablename__ = "purchase_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    purchase_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("purchases.id", ondelete="CASCADE"))
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id"))
+    qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    purchase: Mapped[Purchase] = relationship(back_populates="items")
+
+
+# Umbral de stock mínimo para alertas.
+Product.low_stock_threshold = mapped_column(Integer, default=10)

@@ -95,7 +95,27 @@ class StockOp(BaseModel):
     reason: str | None = None
 
 
-SyncOp = SaleOp | AccessOp | StockOp
+class TabLoadOp(BaseModel):
+    kind: Literal["tab_load"] = "tab_load"
+    client_uuid: uuid.UUID
+    tab_code: str
+    amount: Decimal
+
+
+class TabChargeOp(BaseModel):
+    """Descuenta saldo de una pulsera. Se dispara desde barras offline.
+
+    Si el saldo local era suficiente pero el server ve algo distinto por carrera,
+    se aplica igual y se deja en negativo; la UI debe mostrar el sobregiro.
+    """
+    kind: Literal["tab_charge"] = "tab_charge"
+    client_uuid: uuid.UUID
+    tab_code: str
+    amount: Decimal  # positivo
+    ref_sale_client_uuid: uuid.UUID | None = None
+
+
+SyncOp = SaleOp | AccessOp | StockOp | TabLoadOp | TabChargeOp
 
 
 class SyncBatchIn(BaseModel):

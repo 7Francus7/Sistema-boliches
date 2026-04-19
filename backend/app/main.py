@@ -7,7 +7,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import analytics, auth, bootstrap, devices, products, sync
+from .routers import (
+    analytics,
+    auth,
+    bootstrap,
+    devices,
+    products,
+    promoters,
+    shifts,
+    suppliers,
+    sync,
+    tabs,
+)
 from .seed import run_seed
 
 
@@ -48,3 +59,7 @@ app.include_router(sync.router)
 app.include_router(analytics.router)
 app.include_router(devices.router)
 app.include_router(products.router)
+app.include_router(shifts.router)
+app.include_router(promoters.router)
+app.include_router(tabs.router)
+app.include_router(suppliers.router)

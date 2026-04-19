@@ -10,8 +10,11 @@ from ..models import (
     AccessLog,
     Sale,
     SaleItem,
+    Shift,
     StockLevel,
     StockMovement,
+    Tab,
+    TabMovement,
     Ticket,
     User,
 )
@@ -22,6 +25,8 @@ from ..schemas import (
     StockOp,
     SyncBatchIn,
     SyncBatchOut,
+    TabChargeOp,
+    TabLoadOp,
 )
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -32,6 +37,15 @@ def _apply_sale(db: Session, op: SaleOp, user: User) -> OpResult:
     if existing:
         return OpResult(client_uuid=op.client_uuid, status="duplicate", server_id=existing.id)
 
+    # Atribuimos la venta al turno abierto del cajero en ese device (si existe).
+    open_shift = db.execute(
+        select(Shift).where(
+            Shift.user_id == user.id,
+            Shift.device_id == op.device_id,
+            Shift.closed_at.is_(None),
+        )
+    ).scalar_one_or_none()
+
     sale = Sale(
         client_uuid=op.client_uuid,
         event_id=op.event_id,
@@ -40,6 +54,7 @@ def _apply_sale(db: Session, op: SaleOp, user: User) -> OpResult:
         total=op.total,
         payment_method=op.payment_method,
         created_at=op.created_at,
+        shift_id=open_shift.id if open_shift else None,
     )
     db.add(sale)
     db.flush()
@@ -121,6 +136,82 @@ def _apply_access(db: Session, op: AccessOp) -> OpResult:
     return OpResult(client_uuid=op.client_uuid, status="accepted", server_id=log.id)
 
 
+def _get_tab_by_code(db: Session, venue_id, code: str) -> Tab | None:
+    return db.execute(
+        select(Tab).where(Tab.venue_id == venue_id, Tab.code == code)
+    ).scalar_one_or_none()
+
+
+def _apply_tab_load(db: Session, op: TabLoadOp, user: User) -> OpResult:
+    existing = db.execute(
+        select(TabMovement).where(TabMovement.client_uuid == op.client_uuid)
+    ).scalar_one_or_none()
+    if existing:
+        return OpResult(client_uuid=op.client_uuid, status="duplicate", server_id=existing.id)
+
+    tab = _get_tab_by_code(db, user.venue_id, op.tab_code)
+    if tab is None:
+        return OpResult(client_uuid=op.client_uuid, status="error", reason="tab_not_found")
+    if tab.status != "active":
+        return OpResult(client_uuid=op.client_uuid, status="conflict", reason="tab_closed")
+
+    mov = TabMovement(
+        client_uuid=op.client_uuid,
+        tab_id=tab.id,
+        kind="load",
+        amount=op.amount,
+        user_id=user.id,
+    )
+    db.add(mov)
+    from decimal import Decimal
+    tab.balance = (tab.balance or Decimal(0)) + op.amount
+    db.flush()
+    return OpResult(client_uuid=op.client_uuid, status="accepted", server_id=mov.id)
+
+
+def _apply_tab_charge(db: Session, op: TabChargeOp, user: User) -> OpResult:
+    existing = db.execute(
+        select(TabMovement).where(TabMovement.client_uuid == op.client_uuid)
+    ).scalar_one_or_none()
+    if existing:
+        return OpResult(client_uuid=op.client_uuid, status="duplicate", server_id=existing.id)
+
+    tab = _get_tab_by_code(db, user.venue_id, op.tab_code)
+    if tab is None:
+        return OpResult(client_uuid=op.client_uuid, status="error", reason="tab_not_found")
+    if tab.status != "active":
+        return OpResult(client_uuid=op.client_uuid, status="conflict", reason="tab_closed")
+
+    from decimal import Decimal
+    # Si la venta asociada (offline) ya fue aplicada, lo linkeamos.
+    ref_sale_id = None
+    if op.ref_sale_client_uuid:
+        sale = db.execute(
+            select(Sale).where(Sale.client_uuid == op.ref_sale_client_uuid)
+        ).scalar_one_or_none()
+        if sale:
+            ref_sale_id = sale.id
+
+    mov = TabMovement(
+        client_uuid=op.client_uuid,
+        tab_id=tab.id,
+        kind="charge",
+        amount=-op.amount,
+        ref_sale_id=ref_sale_id,
+        user_id=user.id,
+    )
+    db.add(mov)
+    tab.balance = (tab.balance or Decimal(0)) - op.amount
+    # Permitimos que quede negativo (sobregiro offline). La UI muestra alerta.
+    db.flush()
+    return OpResult(
+        client_uuid=op.client_uuid,
+        status="accepted" if tab.balance >= 0 else "accepted",
+        reason=None if tab.balance >= 0 else "overdraft",
+        server_id=mov.id,
+    )
+
+
 def _apply_stock(db: Session, op: StockOp, user: User) -> OpResult:
     existing = db.execute(
         select(StockMovement).where(StockMovement.client_uuid == op.client_uuid)
@@ -164,6 +255,10 @@ def sync_batch(
                 res = _apply_access(db, op)
             elif isinstance(op, StockOp):
                 res = _apply_stock(db, op, user)
+            elif isinstance(op, TabLoadOp):
+                res = _apply_tab_load(db, op, user)
+            elif isinstance(op, TabChargeOp):
+                res = _apply_tab_charge(db, op, user)
             else:  # pragma: no cover
                 res = OpResult(client_uuid=op.client_uuid, status="error", reason="unknown_op")
         except Exception as exc:  # noqa: BLE001
