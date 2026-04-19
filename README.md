@@ -117,6 +117,37 @@ el E2E completo de "noche offline → sync → dashboard".
   se detecta automáticamente (latido rápido entre teclas + Enter final).
   Busca por `sku` en el catálogo local y agrega al ticket.
 
+## Deploy a producción
+
+Recomendado: **frontend en Vercel + backend en Railway/Render** (ambos con un click
+desde la UI).
+
+### Frontend — Vercel
+
+1. *Import Project* → elegí este repo.
+2. *Root Directory*: `frontend/` (detectará Vite automáticamente por `vercel.json`).
+3. *Environment Variables*: `VITE_API_BASE = https://<tu-backend>.up.railway.app`
+4. Deploy. Las rutas SPA están resueltas por `rewrites` en `frontend/vercel.json`.
+
+### Backend — Railway (Docker)
+
+1. *New Project* → *Deploy from GitHub* → este repo.
+2. *Root Directory*: `backend/`. Railway usa `backend/railway.toml` (build por Dockerfile).
+3. Agregar plugin **PostgreSQL**. `DATABASE_URL` se inyecta solo.
+4. Variables: `JWT_SECRET=<algo largo aleatorio>`, `ENV=prod`.
+5. El primer deploy corre las migraciones Alembic automáticamente (lifespan).
+
+### Backend — Render (alternativa)
+
+1. *New Blueprint* apuntando al repo: Render lee `backend/render.yaml` y crea
+   el servicio web + la DB Postgres, con `DATABASE_URL` y `JWT_SECRET` auto-generados.
+2. Agregar manualmente el dominio del frontend en la variable `CORS_ORIGINS` si
+   restringís CORS (por defecto está abierto con `*`).
+
+> **Nota:** el backend normaliza `DATABASE_URL` (`postgres://` → `postgresql+psycopg://`)
+> en `app/config.py`, así que cualquier URL estándar de Railway/Render/Supabase/Neon
+> funciona sin tocar nada.
+
 ## Próximos pasos sugeridos
 
 - [ ] Alertas UI para `conflict` de `/sync/batch`.
