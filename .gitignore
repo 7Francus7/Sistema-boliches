@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+.env.local
+*.sqlite3
+*.db
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build outputs
+build/
+.turbo/
