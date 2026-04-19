@@ -8,6 +8,10 @@ const routes = [
   { path: '/door', component: () => import('./views/Door.vue') },
   { path: '/admin', component: () => import('./views/Admin.vue') },
   { path: '/admin/stock', component: () => import('./views/AdminStock.vue') },
+  { path: '/admin/promoters', component: () => import('./views/AdminPromoters.vue') },
+  { path: '/admin/shifts', component: () => import('./views/AdminShifts.vue') },
+  { path: '/admin/suppliers', component: () => import('./views/AdminSuppliers.vue') },
+  { path: '/admin/alerts', component: () => import('./views/AdminAlerts.vue') },
 ]
 
 export const router = createRouter({
